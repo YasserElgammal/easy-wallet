@@ -13,7 +13,7 @@
 
 ```bash
 composer require yasser-elgammal/easy-wallet
----
+```
 
 ## 💸 Usage Example
 
