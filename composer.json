@@ -1,0 +1,25 @@
+{
+    "name": "yasser-elgammal/laravel-easy-wallet",
+    "description": "A package to make easy wallet for laravel projects.",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "YasserElgammal\\LaravelEasyWallet\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "YasserElgammal",
+            "email": "yassermelgammal@gmail.com"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "YasserElgammal\\LaravelEasyWallet\\EasyWalletServiceProvider"
+            ]
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}
