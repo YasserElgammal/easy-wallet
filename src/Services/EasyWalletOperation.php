@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Database\Eloquent\Model;
 use RuntimeException;
 use InvalidArgumentException;
+use YasserElgammal\LaravelEasyWallet\Data\RecordTransactionData;
 use YasserElgammal\LaravelEasyWallet\Models\Wallet;
 use YasserElgammal\LaravelEasyWallet\Models\WalletTransaction;
 
@@ -19,8 +20,16 @@ class EasyWalletOperation
 
         DB::transaction(function () use ($walletable, $amount, $description) {
             $wallet = $this->getOrCreateWallet($walletable);
+            $transactionNumber = $this->generateRandomTransactionNumber();
+
             $wallet->increment('balance', $amount);
-            $this->recordTransaction($wallet, $amount, 'credit', $description);
+            $this->recordTransaction(new RecordTransactionData(
+                wallet: $wallet,
+                amount: $amount,
+                type: 'credit',
+                description: $description,
+                transactionNumber: $transactionNumber
+            ));
         });
     }
 
@@ -38,8 +47,17 @@ class EasyWalletOperation
             }
 
             $this->ensureSufficientBalance($wallet, $amount);
+            $transactionNumber = $this->generateRandomTransactionNumber();
+
             $wallet->decrement('balance', $amount);
-            $this->recordTransaction($wallet, -$amount, 'debit', $description, null, $wallet->id);
+            $this->recordTransaction(new RecordTransactionData(
+                wallet: $wallet,
+                amount: -$amount,
+                type: 'debit',
+                description: $description,
+                fromWalletId: $wallet->id,
+                transactionNumber: $transactionNumber
+            ));
         });
     }
 
@@ -62,14 +80,31 @@ class EasyWalletOperation
             }
 
             $this->ensureSufficientBalance($fromWallet, $amount);
+            $transactionNumber = $this->generateRandomTransactionNumber();
 
             // Update the balance of the sending wallet
             $fromWallet->decrement('balance', $amount);
-            $this->recordTransaction($fromWallet, -$amount, 'debit', $description, $toWallet->id, $fromWallet->id);
+            $this->recordTransaction(new RecordTransactionData(
+                wallet: $fromWallet,
+                amount: -$amount,
+                type: 'debit',
+                description: $description,
+                toWalletId: $toWallet->id,
+                fromWalletId: $fromWallet->id,
+                transactionNumber: $transactionNumber
+            ));
 
             // Update the balance of the receiving wallet
             $toWallet->increment('balance', $amount);
-            $this->recordTransaction($toWallet, $amount, 'credit', $description, $toWallet->id, $fromWallet->id);
+            $this->recordTransaction(new RecordTransactionData(
+                wallet: $toWallet,
+                amount: $amount,
+                type: 'credit',
+                description: $description,
+                toWalletId: $toWallet->id,
+                fromWalletId: $fromWallet->id,
+                transactionNumber: $transactionNumber
+            ));
         });
     }
 
@@ -90,21 +125,19 @@ class EasyWalletOperation
         }
     }
 
-    private function recordTransaction(
-        Model $wallet,
-        float $amount,
-        string $type,
-        ?string $description = null,
-        ?int $toWalletId = null,
-        ?int $fromWalletId = null
-    ): void {
-        WalletTransaction::create([
-            'wallet_id'      => $wallet->id,
-            'type'           => $type,
-            'amount'         => $amount,
-            'description'    => $description,
-            'to_wallet_id'   => $toWalletId,
-            'from_wallet_id' => $fromWalletId,
-        ]);
+    private function recordTransaction(RecordTransactionData $data): void
+    {
+        WalletTransaction::create($data->toArray());
+    }
+
+    private function generateRandomTransactionNumber()
+    {
+        $number = null;
+
+        while (!$number || WalletTransaction::where('transaction_number', $number)->exists()) {
+            $number = 'TXN-' . strtoupper(uniqid());
+        }
+
+        return $number;
     }
 }
