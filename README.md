@@ -12,7 +12,7 @@
 ## 📦 Installation
 
 ```bash
-composer require yasser-elgammal/easy-wallet
+composer require yasser-elgammal/laravel-easy-wallet
 ```
 
 ## 💸 Usage Example
