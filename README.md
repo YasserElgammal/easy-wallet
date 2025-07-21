@@ -17,10 +17,21 @@ composer require yasser-elgammal/easy-wallet
 
 ## 💸 Usage Example
 
-### 1. Credit Wallet
+### 1. Add Required Relation to related models
 
 ```php
-use EasyWallet;
+use YasserElgammal\LaravelEasyWallet\Models\Wallet;
+
+    public function wallet()
+    {
+        return $this->morphOne(Wallet::class, 'walletable');
+    }
+```
+
+### 2. Credit Wallet
+
+```php
+use YasserElgammal\LaravelEasyWallet\Facades\EasyWallet;
 use App\Models\User;
 
 $user = User::find(1);
@@ -30,7 +41,7 @@ EasyWallet::credit($user, 100.00, 'Initial deposit');
 
 ---
 
-### 2. Debit Wallet
+### 3. Debit Wallet
 
 ```php
 EasyWallet::debit($user, 25.00, 'Purchased course');
@@ -38,7 +49,7 @@ EasyWallet::debit($user, 25.00, 'Purchased course');
 
 ---
 
-### 3. Transfer Between Wallets
+### 4. Transfer Between Wallets
 
 ```php
 $fromUser = User::find(1);
@@ -49,7 +60,7 @@ EasyWallet::transfer($fromUser, $toUser, 40.00, 'Transfer to friend');
 
 ---
 
-### 4. Get Wallet Balance
+### 5. Get Wallet Balance
 
 ```php
 $balance = EasyWallet::balance($user);
