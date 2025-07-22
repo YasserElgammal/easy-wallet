@@ -33,13 +33,13 @@ class EasyWalletOperation
         });
     }
 
-    public function debit(Model $walletable, float $amount, ?string $description = null): void
+    public function debit(Model $walletable, float $amount, ?string $description = null): WalletTransaction
     {
         if ($amount <= 0) {
             throw new InvalidArgumentException('Amount must be greater than zero.');
         }
 
-        DB::transaction(function () use ($walletable, $amount, $description) {
+        return  DB::transaction(function () use ($walletable, $amount, $description) {
             $wallet = $walletable->wallet;
 
             if (!$wallet) {
@@ -50,7 +50,7 @@ class EasyWalletOperation
             $transactionNumber = $this->generateRandomTransactionNumber();
 
             $wallet->decrement('balance', $amount);
-            $this->recordTransaction(new RecordTransactionData(
+            $transaction =  $this->recordTransaction(new RecordTransactionData(
                 wallet: $wallet,
                 amount: -$amount,
                 type: 'debit',
@@ -58,6 +58,7 @@ class EasyWalletOperation
                 fromWalletId: $wallet->id,
                 transactionNumber: $transactionNumber
             ));
+            return $transaction;
         });
     }
 
@@ -125,9 +126,9 @@ class EasyWalletOperation
         }
     }
 
-    private function recordTransaction(RecordTransactionData $data): void
+    private function recordTransaction(RecordTransactionData $data): WalletTransaction
     {
-        WalletTransaction::create($data->toArray());
+        return  WalletTransaction::create($data->toArray());
     }
 
     private function generateRandomTransactionNumber()
