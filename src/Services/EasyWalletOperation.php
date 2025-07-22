@@ -12,13 +12,13 @@ use YasserElgammal\LaravelEasyWallet\Models\WalletTransaction;
 
 class EasyWalletOperation
 {
-    public function credit(Model $walletable, float $amount, ?string $description = null): void
+    public function credit(Model $walletable, float $amount, ?string $description = null, ?string $payment_method = null, ?string $payment_refrance = null): void
     {
         if ($amount <= 0) {
             throw new InvalidArgumentException('Amount must be greater than zero.');
         }
 
-        DB::transaction(function () use ($walletable, $amount, $description) {
+        DB::transaction(function () use ($walletable, $amount, $description, $payment_method, $payment_refrance) {
             $wallet = $this->getOrCreateWallet($walletable);
             $transactionNumber = $this->generateRandomTransactionNumber();
 
@@ -28,7 +28,9 @@ class EasyWalletOperation
                 amount: $amount,
                 type: 'credit',
                 description: $description,
-                transactionNumber: $transactionNumber
+                transactionNumber: $transactionNumber,
+                payment_method: $payment_method,
+                payment_refrance: $payment_refrance
             ));
         });
     }

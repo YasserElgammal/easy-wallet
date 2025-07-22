@@ -14,6 +14,8 @@ class RecordTransactionData
         public ?int $toWalletId = null,
         public ?int $fromWalletId = null,
         public ?string $transactionNumber = null,
+        public ?string $payment_method = null,
+        public ?string $payment_refrance = null
     ) {}
 
     // داخل RecordTransactionData
@@ -26,7 +28,9 @@ class RecordTransactionData
             'description'        => $this->description,
             'to_wallet_id'       => $this->toWalletId,
             'from_wallet_id'     => $this->fromWalletId,
-            'transaction_number' => $this->transactionNumber
+            'transaction_number' => $this->transactionNumber,
+            'payment_method' => $this->payment_method,
+            'payment_method_transaction_refrance' => $this->payment_refrance
         ];
     }
 }
