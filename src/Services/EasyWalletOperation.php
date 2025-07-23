@@ -50,7 +50,7 @@ class EasyWalletOperation
             $transactionNumber = $this->generateRandomTransactionNumber();
 
             $wallet->decrement('balance', $amount);
-            $transaction =  $this->recordTransaction(new RecordTransactionData(
+            return $this->recordTransaction(new RecordTransactionData(
                 wallet: $wallet,
                 amount: -$amount,
                 type: 'debit',
@@ -58,7 +58,6 @@ class EasyWalletOperation
                 fromWalletId: $wallet->id,
                 transactionNumber: $transactionNumber
             ));
-            return $transaction;
         });
     }
 
