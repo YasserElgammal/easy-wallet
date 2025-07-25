@@ -12,18 +12,19 @@ use YasserElgammal\LaravelEasyWallet\Models\WalletTransaction;
 
 class EasyWalletOperation
 {
-    public function credit(Model $walletable, float $amount, ?string $description = null): void
+    public function credit(Model $walletable, float $amount, ?string $description = null): WalletTransaction
     {
         if ($amount <= 0) {
             throw new InvalidArgumentException('Amount must be greater than zero.');
         }
 
-        DB::transaction(function () use ($walletable, $amount, $description) {
-            $wallet = $this->getOrCreateWallet($walletable);
+        return DB::transaction(function () use ($walletable, $amount, $description) {
+            $wallet = $this->getOrCreateWallet($walletable, true);
             $transactionNumber = $this->generateRandomTransactionNumber();
 
             $wallet->increment('balance', $amount);
-            $this->recordTransaction(new RecordTransactionData(
+
+            return $this->recordTransaction(new RecordTransactionData(
                 wallet: $wallet,
                 amount: $amount,
                 type: 'credit',
@@ -39,7 +40,7 @@ class EasyWalletOperation
             throw new InvalidArgumentException('Amount must be greater than zero.');
         }
 
-        return  DB::transaction(function () use ($walletable, $amount, $description) {
+        return DB::transaction(function () use ($walletable, $amount, $description) {
             $wallet = $walletable->wallet;
 
             if (!$wallet) {
@@ -50,6 +51,7 @@ class EasyWalletOperation
             $transactionNumber = $this->generateRandomTransactionNumber();
 
             $wallet->decrement('balance', $amount);
+            
             return $this->recordTransaction(new RecordTransactionData(
                 wallet: $wallet,
                 amount: -$amount,
@@ -68,8 +70,8 @@ class EasyWalletOperation
         }
 
         DB::transaction(function () use ($fromWalletable, $toWalletable, $amount, $description) {
-            $fromWallet = $fromWalletable->wallet;
-            $toWallet = $this->getOrCreateWallet($toWalletable);
+            $fromWallet = $fromWalletable->wallet()->lockForUpdate()->first();
+            $toWallet = $this->getOrCreateWallet($toWalletable, true);
 
             if (!$fromWallet) {
                 throw new RuntimeException('Sender wallet not found');
@@ -113,9 +115,12 @@ class EasyWalletOperation
         return $walletable->wallet?->balance ?? 0;
     }
 
-    private function getOrCreateWallet(Model $walletable): Wallet
+    private function getOrCreateWallet(Model $walletable, $lock = false): Wallet
     {
-        return $walletable->wallet ?? $walletable->wallet()->create();
+        $query = $walletable->wallet();
+        $wallet = $lock ? $query->lockForUpdate()->first() : $query->first();
+
+        return $wallet ?? $walletable->wallet()->create();
     }
 
     private function ensureSufficientBalance(Model $wallet, float $amount): void
