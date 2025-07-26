@@ -51,7 +51,7 @@ class EasyWalletOperation
             $transactionNumber = $this->generateRandomTransactionNumber();
 
             $wallet->decrement('balance', $amount);
-            
+
             return $this->recordTransaction(new RecordTransactionData(
                 wallet: $wallet,
                 amount: -$amount,
@@ -132,7 +132,7 @@ class EasyWalletOperation
 
     private function recordTransaction(RecordTransactionData $data): WalletTransaction
     {
-        return  WalletTransaction::create($data->toArray());
+        return WalletTransaction::create($data->toArray());
     }
 
     private function generateRandomTransactionNumber()
@@ -140,7 +140,7 @@ class EasyWalletOperation
         $number = null;
 
         while (!$number || WalletTransaction::where('transaction_number', $number)->exists()) {
-            $number = 'TXN-' . strtoupper(uniqid());
+            $number = config('laravel-easy-wallet.transaction_prefix') . strtoupper(uniqid());
         }
 
         return $number;

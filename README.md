@@ -56,6 +56,17 @@ $balance = EasyWallet::balance($user);
 
 ```
 
+## ⛏ Customization
+
+
+### Change prefix for wallet transaction number 
+by default it's "TXN-" You can customize it by adding this attribute in `.env` file
+
+```bash
+WALLET_TXN_PREFIX=
+
+```
+
 ---
 
 ## 🤝 Contributing
