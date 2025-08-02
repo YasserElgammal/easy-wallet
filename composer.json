@@ -20,6 +20,19 @@
             ]
         }
     },
+    "scripts": {
+        "test": "vendor/bin/phpunit"
+    },
     "minimum-stability": "dev",
-    "prefer-stable": true
+    "prefer-stable": true,
+    "require-dev": {
+        "orchestra/testbench": "^10.4",
+        "phpunit/phpunit": "^11.5"
+    },
+    "autoload-dev": {
+    "psr-4": {
+        "YasserElgammal\\LaravelEasyWallet\\Tests\\": "tests/"
+    }
+}
+
 }
