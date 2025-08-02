@@ -15,7 +15,7 @@ class EasyWalletServiceProvider extends ServiceProvider
 
         $this->mergeConfigFrom(
             __DIR__ . '/../config/easy-wallet.php',
-            'laravel-easy-wallet'
+            'easy-wallet'
         );
     }
 
