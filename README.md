@@ -67,6 +67,69 @@ $balance = EasyWallet::balance($user);
 
 ```
 
+## ⛏ Customization
+
+
+### Change prefix for wallet transaction number 
+by default it's "TXN-" You can customize it by adding this attribute in `.env` file
+
+```bash
+WALLET_TXN_PREFIX=
+
+```
+## 🔧 Extra : Publishing Resources
+
+You can optionally publish the following resources if you want to customize them:
+
+### 🛠️ 1. Publish the Configuration File
+
+```bash
+php artisan vendor:publish --tag=easy-wallet-config
+```
+
+This will copy the config file to:
+
+```
+config/easy-wallet.php
+```
+
+---
+
+### 🗃️ 2. Publish the Migrations
+
+```bash
+php artisan vendor:publish --tag=easy-wallet-migrations
+```
+
+This will copy the migration files to:
+
+```
+database/migrations/
+```
+
+You can then modify them if needed before running:
+
+```bash
+php artisan migrate
+```
+
+---
+
+### 🧩 3. Publish the Models
+
+```bash
+php artisan vendor:publish --tag=easy-wallet-models
+```
+
+This will copy the Eloquent models to your application:
+
+```
+app/Models/Wallet.php
+app/Models/WalletTransaction.php
+```
+
+You can publish these if you want to override or extend the default behavior.
+
 ---
 
 ## 🤝 Contributing
