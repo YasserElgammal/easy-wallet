@@ -17,15 +17,24 @@ composer require yasser-elgammal/laravel-easy-wallet
 
 ## 💸 Usage Example
 
-### 1. Add Required Relation to related models
+### 1. Add `HasWallet` Trait into models that need to has wallets
+This enable wallet functionality, this will create wallet relation between current `model` and `wallet`
 
 ```php
-use YasserElgammal\LaravelEasyWallet\Models\Wallet;
+use YasserElgammal\LaravelEasyWallet\Traits\HasWallet;
 
-    public function wallet()
-    {
-        return $this->morphOne(Wallet::class, 'walletable');
-    }
+class User extends Model
+{
+    use HasWallet;
+
+    /**
+     * Automatically create a wallet when the model is created.
+     * Set to false if you want to disable auto creation.
+     * Default is [true] when not included $autoCreateWallet property
+     */
+    protected bool $autoCreateWallet = false;
+}
+
 ```
 
 ### 2. Credit Wallet
