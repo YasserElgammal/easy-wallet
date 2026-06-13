@@ -1,18 +1,20 @@
 <?php
 
+declare(strict_types=1);
+
 namespace YasserElgammal\LaravelEasyWallet\Traits;
 
-use YasserElgammal\LaravelEasyWallet\Models\Wallet;
-
+use Illuminate\Database\Eloquent\Relations\MorphOne;
 
 trait HasWallet
 {
-    public function wallet()
+    public function wallet(): MorphOne
     {
-        return $this->morphOne(Wallet::class, 'walletable');
+        $walletModel = config('easy-wallet.models.wallet', \YasserElgammal\LaravelEasyWallet\Models\Wallet::class);
+        return $this->morphOne($walletModel, 'walletable');
     }
 
-    public static function bootHasWallet()
+    public static function bootHasWallet(): void
     {
         static::created(function ($model) {
             if (property_exists($model, 'autoCreateWallet') && $model->autoCreateWallet === false) {
