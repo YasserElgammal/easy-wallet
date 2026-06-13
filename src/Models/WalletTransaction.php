@@ -1,8 +1,11 @@
 <?php
 
+declare(strict_types=1);
+
 namespace YasserElgammal\LaravelEasyWallet\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class WalletTransaction extends Model
 {
@@ -16,18 +19,22 @@ class WalletTransaction extends Model
         'to_wallet_id'
     ];
 
-    public function wallet()
+    protected $casts = [
+        'amount' => 'decimal:2',
+    ];
+
+    public function wallet(): BelongsTo
     {
-        return $this->belongsTo(Wallet::class);
+        return $this->belongsTo(config('easy-wallet.models.wallet', Wallet::class));
     }
 
-    public function fromWallet()
+    public function fromWallet(): BelongsTo
     {
-        return $this->belongsTo(Wallet::class, 'from_wallet_id');
+        return $this->belongsTo(config('easy-wallet.models.wallet', Wallet::class), 'from_wallet_id');
     }
 
-    public function toWallet()
+    public function toWallet(): BelongsTo
     {
-        return $this->belongsTo(Wallet::class, 'to_wallet_id');
+        return $this->belongsTo(config('easy-wallet.models.wallet', Wallet::class), 'to_wallet_id');
     }
 }

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace YasserElgammal\LaravelEasyWallet\Data;
 
 use Illuminate\Database\Eloquent\Model;
@@ -16,7 +18,6 @@ class RecordTransactionData
         public ?string $transactionNumber = null,
     ) {}
 
-    // داخل RecordTransactionData
     public function toArray(): array
     {
         return [
