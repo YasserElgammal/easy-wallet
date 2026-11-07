@@ -1,6 +1,18 @@
 {
     "name": "yasser-elgammal/laravel-easy-wallet",
-    "description": "A package to make easy wallet for laravel projects.",
+    "description": "A secure, extensible Laravel wallet package supporting multi-wallets, transactions, transfers, refunds, idempotency, and audit trails.",
+    "keywords": [
+        "laravel",
+        "laravel-13",
+        "wallet",
+        "easy-wallet",
+        "transactions",
+        "idempotency",
+        "ledger",
+        "finance",
+        "refunds",
+        "multi-wallet"
+    ],
     "license": "MIT",
     "autoload": {
         "psr-4": {
@@ -13,26 +25,33 @@
             "email": "yassermelgammal@gmail.com"
         }
     ],
+    "require": {
+        "php": "^8.2",
+        "illuminate/database": "^10.0 || ^11.0 || ^12.0 || ^13.0",
+        "illuminate/support": "^10.0 || ^11.0 || ^12.0 || ^13.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^10.4 || ^11.0",
+        "phpunit/phpunit": "^11.5"
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "YasserElgammal\\LaravelEasyWallet\\Tests\\": "tests/"
+        }
+    },
     "extra": {
         "laravel": {
             "providers": [
                 "YasserElgammal\\LaravelEasyWallet\\EasyWalletServiceProvider"
-            ]
+            ],
+            "aliases": {
+                "EasyWallet": "YasserElgammal\\LaravelEasyWallet\\Facades\\EasyWallet"
+            }
         }
     },
     "scripts": {
         "test": "vendor/bin/phpunit"
     },
     "minimum-stability": "dev",
-    "prefer-stable": true,
-    "require-dev": {
-        "orchestra/testbench": "^10.4",
-        "phpunit/phpunit": "^11.5"
-    },
-    "autoload-dev": {
-    "psr-4": {
-        "YasserElgammal\\LaravelEasyWallet\\Tests\\": "tests/"
-    }
-}
-
+    "prefer-stable": true
 }
