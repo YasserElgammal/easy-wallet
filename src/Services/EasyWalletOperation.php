@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace YasserElgammal\LaravelEasyWallet\Services;
 
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
@@ -13,31 +14,99 @@ use YasserElgammal\LaravelEasyWallet\Models\WalletTransaction;
 use YasserElgammal\LaravelEasyWallet\Exceptions\InsufficientBalanceException;
 use YasserElgammal\LaravelEasyWallet\Exceptions\WalletNotFoundException;
 use YasserElgammal\LaravelEasyWallet\Exceptions\InvalidAmountException;
+use YasserElgammal\LaravelEasyWallet\Exceptions\IdempotencyConflictException;
+use YasserElgammal\LaravelEasyWallet\Exceptions\TransactionAlreadyRefundedException;
+use YasserElgammal\LaravelEasyWallet\Exceptions\InvalidRefundAmountException;
 use YasserElgammal\LaravelEasyWallet\Events\WalletCredited;
 use YasserElgammal\LaravelEasyWallet\Events\WalletDebited;
 use YasserElgammal\LaravelEasyWallet\Events\WalletTransferCompleted;
+use YasserElgammal\LaravelEasyWallet\Events\WalletRefunded;
 
 class EasyWalletOperation
 {
-    public function credit(Model $walletable, float $amount, ?string $description = null): Model
-    {
+    public function credit(
+        Model $walletable,
+        float $amount,
+        ?string $description = null,
+        ?Model $reference = null,
+        ?array $meta = null,
+        ?string $idempotencyKey = null,
+        string $wallet = 'default'
+    ): Model {
         if ($amount <= 0) {
             throw new InvalidAmountException('Amount must be greater than zero.');
         }
 
-        return DB::transaction(function () use ($walletable, $amount, $description) {
-            $wallet = $this->getOrCreateWallet($walletable, true);
+        return DB::transaction(function () use ($walletable, $amount, $description, $reference, $meta, $idempotencyKey, $wallet) {
+            $transactionModelClass = config('easy-wallet.models.transaction', WalletTransaction::class);
+            $walletModel = $this->getOrCreateWallet($walletable, true, $wallet);
+
+            $payloadHash = null;
+            if ($idempotencyKey !== null) {
+                $payload = [
+                    'action'         => 'credit',
+                    'wallet_id'      => (int) $walletModel->id,
+                    'amount'         => (string) number_format($amount, 4, '.', ''),
+                    'description'    => $description,
+                    'reference_type' => $reference?->getMorphClass(),
+                    'reference_id'   => $reference ? (string) $reference->getKey() : null,
+                ];
+                $payloadHash = $this->calculatePayloadHash($payload);
+
+                $existing = $transactionModelClass::where('wallet_id', $walletModel->id)
+                    ->where('idempotency_key', $idempotencyKey)
+                    ->first();
+
+                if ($existing) {
+                    if ($existing->payload_hash && $existing->payload_hash !== $payloadHash) {
+                        throw new IdempotencyConflictException(
+                            "Idempotency key '{$idempotencyKey}' was already used with a different payload."
+                        );
+                    }
+                    return $existing;
+                }
+            }
+
             $transactionNumber = $this->generateRandomTransactionNumber();
+            $balanceBefore = (float) $walletModel->balance;
+            $walletModel->increment('balance', $amount);
+            $balanceAfter = $balanceBefore + $amount;
 
-            $wallet->increment('balance', $amount);
-
-            $transaction = $this->recordTransaction(new RecordTransactionData(
-                wallet: $wallet,
+            $recordData = new RecordTransactionData(
+                wallet: $walletModel,
                 amount: $amount,
                 type: 'credit',
                 description: $description,
-                transactionNumber: $transactionNumber
-            ));
+                transactionNumber: $transactionNumber,
+                balanceBefore: $balanceBefore,
+                balanceAfter: $balanceAfter,
+                reference: $reference,
+                meta: $meta,
+                idempotencyKey: $idempotencyKey,
+                payloadHash: $payloadHash
+            );
+
+            try {
+                $transaction = $this->recordTransaction($recordData);
+            } catch (QueryException $e) {
+                if ($idempotencyKey !== null) {
+                    $existing = $transactionModelClass::where('wallet_id', $walletModel->id)
+                        ->where('idempotency_key', $idempotencyKey)
+                        ->first();
+                    if ($existing) {
+                        if ($existing->payload_hash && $existing->payload_hash !== $payloadHash) {
+                            throw new IdempotencyConflictException(
+                                "Idempotency key '{$idempotencyKey}' was already used with a different payload."
+                            );
+                        }
+                        return $existing;
+                    }
+                }
+                throw $e;
+            }
+
+            $walletable->unsetRelation('wallet');
+            $walletable->unsetRelation('wallets');
 
             event(new WalletCredited($transaction));
 
@@ -45,33 +114,97 @@ class EasyWalletOperation
         });
     }
 
-    public function debit(Model $walletable, float $amount, ?string $description = null): Model
-    {
+    public function debit(
+        Model $walletable,
+        float $amount,
+        ?string $description = null,
+        ?Model $reference = null,
+        ?array $meta = null,
+        ?string $idempotencyKey = null,
+        string $wallet = 'default'
+    ): Model {
         if ($amount <= 0) {
             throw new InvalidAmountException('Amount must be greater than zero.');
         }
 
-        return DB::transaction(function () use ($walletable, $amount, $description) {
-            // Fix race condition by locking the wallet
-            $wallet = $walletable->wallet()->lockForUpdate()->first();
+        return DB::transaction(function () use ($walletable, $amount, $description, $reference, $meta, $idempotencyKey, $wallet) {
+            $transactionModelClass = config('easy-wallet.models.transaction', WalletTransaction::class);
 
-            if (!$wallet) {
-                throw new WalletNotFoundException('Wallet not found');
+            $walletModel = $walletable->wallet($wallet)->lockForUpdate()->first();
+
+            if (!$walletModel) {
+                throw new WalletNotFoundException("Wallet '{$wallet}' not found");
             }
 
-            $this->ensureSufficientBalance($wallet, $amount);
+            $payloadHash = null;
+            if ($idempotencyKey !== null) {
+                $payload = [
+                    'action'         => 'debit',
+                    'wallet_id'      => (int) $walletModel->id,
+                    'amount'         => (string) number_format($amount, 4, '.', ''),
+                    'description'    => $description,
+                    'reference_type' => $reference?->getMorphClass(),
+                    'reference_id'   => $reference ? (string) $reference->getKey() : null,
+                ];
+                $payloadHash = $this->calculatePayloadHash($payload);
+
+                $existing = $transactionModelClass::where('wallet_id', $walletModel->id)
+                    ->where('idempotency_key', $idempotencyKey)
+                    ->first();
+
+                if ($existing) {
+                    if ($existing->payload_hash && $existing->payload_hash !== $payloadHash) {
+                        throw new IdempotencyConflictException(
+                            "Idempotency key '{$idempotencyKey}' was already used with a different payload."
+                        );
+                    }
+                    return $existing;
+                }
+            }
+
+            $this->ensureSufficientBalance($walletModel, $amount);
             $transactionNumber = $this->generateRandomTransactionNumber();
 
-            $wallet->decrement('balance', $amount);
+            $balanceBefore = (float) $walletModel->balance;
+            $walletModel->decrement('balance', $amount);
+            $balanceAfter = $balanceBefore - $amount;
 
-            $transaction = $this->recordTransaction(new RecordTransactionData(
-                wallet: $wallet,
+            $recordData = new RecordTransactionData(
+                wallet: $walletModel,
                 amount: -$amount,
                 type: 'debit',
                 description: $description,
-                fromWalletId: (int) $wallet->id,
-                transactionNumber: $transactionNumber
-            ));
+                fromWalletId: (int) $walletModel->id,
+                transactionNumber: $transactionNumber,
+                balanceBefore: $balanceBefore,
+                balanceAfter: $balanceAfter,
+                reference: $reference,
+                meta: $meta,
+                idempotencyKey: $idempotencyKey,
+                payloadHash: $payloadHash
+            );
+
+            try {
+                $transaction = $this->recordTransaction($recordData);
+            } catch (QueryException $e) {
+                if ($idempotencyKey !== null) {
+                    $existing = $transactionModelClass::where('wallet_id', $walletModel->id)
+                        ->where('idempotency_key', $idempotencyKey)
+                        ->first();
+                    if ($existing) {
+                        if ($existing->payload_hash && $existing->payload_hash !== $payloadHash) {
+                            throw new IdempotencyConflictException(
+                                "Idempotency key '{$idempotencyKey}' was already used with a different payload."
+                            );
+                        }
+                        return $existing;
+                    }
+                }
+                throw $e;
+            }
+
+            $walletable->unsetRelation('wallet');
+            $walletable->unsetRelation('wallets');
 
             event(new WalletDebited($transaction));
 
@@ -79,29 +212,70 @@ class EasyWalletOperation
         });
     }
 
-    public function transfer(Model $fromWalletable, Model $toWalletable, float $amount, ?string $description = null): void
-    {
+    public function transfer(
+        Model $fromWalletable,
+        Model $toWalletable,
+        float $amount,
+        ?string $description = null,
+        ?Model $reference = null,
+        ?array $meta = null,
+        ?string $idempotencyKey = null,
+        string $fromWalletSlug = 'default',
+        string $toWalletSlug = 'default'
+    ): void {
         if ($amount <= 0) {
             throw new InvalidAmountException('Amount must be greater than zero.');
         }
 
-        DB::transaction(function () use ($fromWalletable, $toWalletable, $amount, $description) {
-            $fromWallet = $fromWalletable->wallet()->lockForUpdate()->first();
-            $toWallet = $this->getOrCreateWallet($toWalletable, true);
+        DB::transaction(function () use ($fromWalletable, $toWalletable, $amount, $description, $reference, $meta, $idempotencyKey, $fromWalletSlug, $toWalletSlug) {
+            $transactionModelClass = config('easy-wallet.models.transaction', WalletTransaction::class);
+
+            $fromWallet = $fromWalletable->wallet($fromWalletSlug)->lockForUpdate()->first();
+            $toWallet = $this->getOrCreateWallet($toWalletable, true, $toWalletSlug);
 
             if (!$fromWallet) {
-                throw new WalletNotFoundException('Sender wallet not found');
+                throw new WalletNotFoundException("Sender wallet '{$fromWalletSlug}' not found");
             }
 
             if ($fromWallet->id === $toWallet->id) {
                 throw new InvalidAmountException('Cannot transfer to the same wallet');
             }
 
+            $payloadHash = null;
+            if ($idempotencyKey !== null) {
+                $payload = [
+                    'action'         => 'transfer',
+                    'from_wallet_id' => (int) $fromWallet->id,
+                    'to_wallet_id'   => (int) $toWallet->id,
+                    'amount'         => (string) number_format($amount, 4, '.', ''),
+                    'description'    => $description,
+                    'reference_type' => $reference?->getMorphClass(),
+                    'reference_id'   => $reference ? (string) $reference->getKey() : null,
+                ];
+                $payloadHash = $this->calculatePayloadHash($payload);
+
+                $existing = $transactionModelClass::where('wallet_id', $fromWallet->id)
+                    ->where('idempotency_key', $idempotencyKey)
+                    ->first();
+
+                if ($existing) {
+                    if ($existing->payload_hash && $existing->payload_hash !== $payloadHash) {
+                        throw new IdempotencyConflictException(
+                            "Idempotency key '{$idempotencyKey}' was already used with a different payload."
+                        );
+                    }
+                    return;
+                }
+            }
+
             $this->ensureSufficientBalance($fromWallet, $amount);
             $transactionNumber = $this->generateRandomTransactionNumber();
 
-            // Update the balance of the sending wallet
+            // Update sender wallet
+            $fromBalanceBefore = (float) $fromWallet->balance;
             $fromWallet->decrement('balance', $amount);
+            $fromBalanceAfter = $fromBalanceBefore - $amount;
+
             $debitTransaction = $this->recordTransaction(new RecordTransactionData(
                 wallet: $fromWallet,
                 amount: -$amount,
@@ -109,11 +283,20 @@ class EasyWalletOperation
                 description: $description,
                 toWalletId: (int) $toWallet->id,
                 fromWalletId: (int) $fromWallet->id,
-                transactionNumber: $transactionNumber
+                transactionNumber: $transactionNumber,
+                balanceBefore: $fromBalanceBefore,
+                balanceAfter: $fromBalanceAfter,
+                reference: $reference,
+                meta: $meta,
+                idempotencyKey: $idempotencyKey,
+                payloadHash: $payloadHash
             ));
 
-            // Update the balance of the receiving wallet
+            // Update receiver wallet
+            $toBalanceBefore = (float) $toWallet->balance;
             $toWallet->increment('balance', $amount);
+            $toBalanceAfter = $toBalanceBefore + $amount;
+
             $creditTransaction = $this->recordTransaction(new RecordTransactionData(
                 wallet: $toWallet,
                 amount: $amount,
@@ -121,24 +304,117 @@ class EasyWalletOperation
                 description: $description,
                 toWalletId: (int) $toWallet->id,
                 fromWalletId: (int) $fromWallet->id,
-                transactionNumber: $transactionNumber
+                transactionNumber: $transactionNumber,
+                balanceBefore: $toBalanceBefore,
+                balanceAfter: $toBalanceAfter,
+                reference: $reference,
+                meta: $meta,
+                idempotencyKey: $idempotencyKey ? $idempotencyKey . '-credit' : null,
+                payloadHash: $payloadHash
             ));
-            
+
+            $fromWalletable->unsetRelation('wallet');
+            $fromWalletable->unsetRelation('wallets');
+            $toWalletable->unsetRelation('wallet');
+            $toWalletable->unsetRelation('wallets');
+
             event(new WalletTransferCompleted($debitTransaction, $creditTransaction));
         });
     }
 
-    public function balance(Model $walletable): float
-    {
-        return (float) ($walletable->wallet?->balance ?? 0);
+    public function refund(
+        Model|int $transaction,
+        ?float $amount = null,
+        ?string $description = null
+    ): Model {
+        $transactionModelClass = config('easy-wallet.models.transaction', WalletTransaction::class);
+
+        if (!$transaction instanceof Model) {
+            $transaction = $transactionModelClass::findOrFail($transaction);
+        }
+
+        if ($transaction->is_refunded) {
+            throw new TransactionAlreadyRefundedException('Transaction has already been fully refunded.');
+        }
+
+        $maxRefundable = abs((float) $transaction->amount) - (float) $transaction->refunded_amount;
+
+        if ($amount === null) {
+            $amount = $maxRefundable;
+        }
+
+        if ($amount <= 0 || $amount > $maxRefundable) {
+            throw new InvalidRefundAmountException(
+                "Invalid refund amount {$amount}. Maximum refundable is {$maxRefundable}."
+            );
+        }
+
+        return DB::transaction(function () use ($transaction, $amount, $description) {
+            $wallet = $transaction->wallet()->lockForUpdate()->first();
+
+            if (!$wallet) {
+                throw new WalletNotFoundException('Wallet associated with transaction not found');
+            }
+
+            $transactionNumber = $this->generateRandomTransactionNumber();
+            $balanceBefore = (float) $wallet->balance;
+
+            // If original transaction was debit, refund credits money back
+            // If original transaction was credit, refund debits money back
+            if ($transaction->type === 'debit') {
+                $wallet->increment('balance', $amount);
+                $balanceAfter = $balanceBefore + $amount;
+                $refundAmount = $amount;
+            } else {
+                $this->ensureSufficientBalance($wallet, $amount);
+                $wallet->decrement('balance', $amount);
+                $balanceAfter = $balanceBefore - $amount;
+                $refundAmount = -$amount;
+            }
+
+            $refundTransaction = $this->recordTransaction(new RecordTransactionData(
+                wallet: $wallet,
+                amount: $refundAmount,
+                type: 'refund',
+                description: $description ?? "Refund for transaction {$transaction->transaction_number}",
+                transactionNumber: $transactionNumber,
+                balanceBefore: $balanceBefore,
+                balanceAfter: $balanceAfter,
+                parentTransactionId: (int) $transaction->id
+            ));
+
+            $newRefundedAmount = (float) $transaction->refunded_amount + $amount;
+            $transaction->update([
+                'refunded_amount' => $newRefundedAmount,
+                'is_refunded' => $newRefundedAmount >= abs((float) $transaction->amount),
+            ]);
+
+            $wallet->walletable?->unsetRelation('wallet');
+            $wallet->walletable?->unsetRelation('wallets');
+
+            event(new WalletRefunded($refundTransaction, $transaction));
+
+            return $refundTransaction;
+        });
     }
 
-    private function getOrCreateWallet(Model $walletable, bool $lock = false): Model
+    public function balance(Model $walletable, string $wallet = 'default'): float
     {
-        $query = $walletable->wallet();
+        return (float) ($walletable->wallet($wallet)->value('balance') ?? 0);
+    }
+
+    private function calculatePayloadHash(array $payload): string
+    {
+        ksort($payload);
+        return hash('sha256', (string) json_encode($payload));
+    }
+
+    private function getOrCreateWallet(Model $walletable, bool $lock = false, string $slug = 'default'): Model
+    {
+        $query = $walletable->wallet($slug);
         $wallet = $lock ? $query->lockForUpdate()->first() : $query->first();
 
-        return $wallet ?? $walletable->wallet()->create();
+        return $wallet ?? $walletable->wallets()->create(['slug' => $slug]);
     }
 
     private function ensureSufficientBalance(Model $wallet, float $amount): void

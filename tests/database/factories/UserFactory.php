@@ -40,8 +40,8 @@ class UserFactory extends Factory
     public function configure(): static
     {
         return $this->afterCreating(function (User $user) {
-            $user->wallet()->create([
-                'balance' => 0
+            $user->wallets()->firstOrCreate([
+                'slug' => 'default',
             ]);
         });
     }
