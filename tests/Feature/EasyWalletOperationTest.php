@@ -256,8 +256,9 @@ class EasyWalletOperationTest extends TestCase
         $this->assertEquals(0, $user->balance()); // default wallet remains 0
         $this->assertEquals(500, $user->balance('points'));
 
-        // Credit cashback wallet
-        $user->credit(25.00, 'Cashback reward', wallet: 'cashback');
+        // Credit cashback wallet directly via wallet model
+        $cashbackWallet = $user->wallets()->firstOrCreate(['slug' => 'cashback']);
+        $cashbackWallet->credit(25.00, 'Cashback reward');
 
         $this->assertEquals(25.00, $user->balance('cashback'));
         $this->assertCount(3, $user->wallets); // default, points, cashback
