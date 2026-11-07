@@ -6,7 +6,7 @@ return [
 
     // Configure the models to be used by the package
     'models' => [
-        'wallet' => \YasserElgammal\LaravelEasyWallet\Models\Wallet::class,
+        'wallet'      => \YasserElgammal\LaravelEasyWallet\Models\Wallet::class,
         'transaction' => \YasserElgammal\LaravelEasyWallet\Models\WalletTransaction::class,
     ],
 ];

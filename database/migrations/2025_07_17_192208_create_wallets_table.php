@@ -16,8 +16,11 @@ return new class extends Migration
         Schema::create('wallets', function (Blueprint $table) {
             $table->id();
             $table->morphs('walletable');
-            $table->decimal('balance', 10, 2)->default(0);
+            $table->string('slug')->default('default');
+            $table->decimal('balance', 18, 4)->default(0);
             $table->timestamps();
+
+            $table->unique(['walletable_type', 'walletable_id', 'slug']);
         });
     }
 
